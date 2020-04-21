@@ -155,7 +155,8 @@ grow_stack_page (void *fault_addr, struct intr_frame *f, struct page *cur_page)
   struct thread *cur = thread_current ();
 
   /* Check if the address is out of the stack range as disscused in sections
-  * Work inspired by Piazza post @1104 */
+  * Work inspired by Piazza post @1104 
+  * Might wanna change later to know how we got these numbers*/
   bool outside_PHYS_BASE = (fault_addr > PHYS_BASE) || (fault_addr < PHYS_BASE - 0x800000);
   bool outside_esp = (fault_addr > (void *)(f->esp + 32)) || (fault_addr < (void *)(f->esp - 32));
   if (outside_PHYS_BASE || outside_esp) {
