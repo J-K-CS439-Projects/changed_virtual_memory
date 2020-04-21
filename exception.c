@@ -228,8 +228,11 @@ page_fault (struct intr_frame *f)
   void *fault_addr;  /* Fault address. */
 
   struct thread *cur = thread_current ();
-  bool held_filesys_lock = lock_held_by_current_thread (&file_lock);
   bool get_lock_and_return = false;
+  bool thread_holding_lock;
+  if (thread_holding_lock = lock_held_by_current_thread (&file_lock)) {
+    lock_release (&file_lock);
+  }
 
 
   /* Obtain faulting address, the virtual address that was
@@ -240,10 +243,6 @@ page_fault (struct intr_frame *f)
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
-
-  if (held_filesys_lock) {
-    lock_release (&file_lock);
-  }
 
   /* Keegan Driving
      After obtaining the fault address, we have to verify the address
@@ -280,7 +279,7 @@ page_fault (struct intr_frame *f)
   }
 
   if(get_lock_and_return) { 
-    if(held_filesys_lock) {
+    if(thread_holding_lock) {
       lock_acquire(&file_lock);
     }
     return;
