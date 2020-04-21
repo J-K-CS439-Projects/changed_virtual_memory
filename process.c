@@ -117,12 +117,15 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  /* Juan Driving
+  * Initialize the page table
+  * Cannot initialize the hash earlier without failing a few cases */
+  struct thread *cur = thread_current ();
+  hash_init (&cur->page_table, page_hash_code, page_comparator, NULL);
+
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  struct thread *cur = thread_current ();
-
-  hash_init (&cur->page_table, page_hash_code, page_comparator, NULL);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -212,8 +215,6 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  hash_destroy (&cur->page_table, page_deallocate);
-
   /* Keegan Driving
   * Print process termination message */
   printf("%s: exit(%d)\n", cur->command, cur->exit_status);
@@ -223,6 +224,9 @@ process_exit (void)
   if(lock_held_by_current_thread(&file_lock)) {
     lock_release (&file_lock);
   }
+
+  /* Release resources the page table is taking up */
+  hash_destroy (&cur->page_table, page_deallocate);
 
   /* Acquire the executable file and close it and afterwards
   * remove it from the list of files opened by the thread;
@@ -597,12 +601,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       //     palloc_free_page (kpage);
       //     return false; 
       //   }
+
+      /* Anisha Driving
+      * Create a new page, if unsuccessful exit */
       struct page *new_page = (struct page*) malloc(sizeof(struct page));
       if (new_page == NULL) {
         free (new_page);
         return false;
       }
 
+      /* Initialize page, account for extra stackpage, and update offset */
       struct thread *cur = thread_current ();
       page_init (cur, new_page, upage, 2, file, ofs, page_read_bytes, writable);
       cur->stack_page_amount--;
@@ -650,8 +658,8 @@ setup_stack (void **esp, const char *file_name)
     token = strtok_r (NULL, " ", &save_ptr);
   }
 
-  /* Create a new page
-  * If unsuccessful, free new_page, arguments, and copy */
+  /* Emaan Driving
+  * Create a new page, if unsuccessful free new_page, arguments, and copy */
   struct page *new_page = (struct page*) malloc(sizeof(struct page));
   if (new_page == NULL) {
     free (new_page);

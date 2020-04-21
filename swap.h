@@ -4,9 +4,8 @@
 #include "vm/page.h"
 
 void swap_init (void);
-
-void swap_insert (struct page *);
-void swap_get (struct page *);
-void swap_free (struct page *);
+void add_swap (struct page *);
+void get_swap_space (struct page *);
+void swap_deallocate (struct page *);
 
 #endif /* vm/swap.h */

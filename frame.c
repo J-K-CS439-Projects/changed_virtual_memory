@@ -14,14 +14,17 @@
 
 static struct bitmap *empty_frames;
 static struct frame_entry *frame_table;
+static struct lock frame_lock;
 static unsigned clock, clock_end;
 
-static struct lock frame_lock;
-
+/* Initialize the frame by splitting up the user pages for the bitmap
+* and frame table, filling each frame_entry, and initialize the lock
+* and clock pointers */
 void
 frame_init (void)
 {
-  /* Borrowed from palloc.c, use this to get the amount of memory
+  /* Juan Driving
+  * Borrowed from palloc.c, use this to get the amount of memory
   * for user pages */
   uint8_t *free_start = ptov (1024 * 1024);
   uint8_t *free_end = ptov (init_ram_pages * PGSIZE);
@@ -40,7 +43,8 @@ frame_init (void)
   /* Decrement the amount bytes we have available due to bitmap */
   user_pages -= bitmap_size;
 
-  /* The frame table contains one entry for each frame that contains a user page */
+  /* Emaan Driving 
+  * The frame table contains one entry for each frame that contains a user page */
   frame_table = (struct frame_entry*) malloc(sizeof(struct frame_entry)*user_pages);
   if(frame_table == NULL) {
     free (frame_table);
@@ -64,6 +68,10 @@ frame_init (void)
   lock_init (&frame_lock);
 }
 
+
+/* Keegan Driving
+* Handle eviction through clock implementation and clear pages that
+* have been evicted */
 void
 evict_frame () {
   struct thread *cur = thread_current ();
@@ -81,7 +89,7 @@ evict_frame () {
 
   /* Once we find the unaccessed frame, we send the occupant
   * page to swap */
-  swap_insert (cur_page);
+  add_swap (cur_page);
 
   /* Update page to reflect it's new location and frame */
   cur_page->frame = NULL;
@@ -90,9 +98,12 @@ evict_frame () {
   pagedir_clear_page (cur_page->pagedir, cur_page->vir_address);
 }
 
+/* Return a frame_entry to the requestion page, and handle cases if
+* there is free frame or if there is need for eviction */
 struct frame_entry *
 get_frame (struct page *cur_page)
 {
+  /* Anisha Driving */
   lock_acquire (&frame_lock);
   int ret = 0;
 
@@ -113,7 +124,8 @@ get_frame (struct page *cur_page)
     ret = index;
   }
 
-  /* Assign the reference of the page and frame to each other */
+  /* Juan Driving
+  * Assign the reference of the page and frame to each other */
   cur_page->frame = &frame_table[ret];
   (&frame_table[ret])->occupying_page = cur_page;
 
@@ -121,7 +133,8 @@ get_frame (struct page *cur_page)
   return &frame_table[ret];
 }
 
-/* Free up the frame a page is mapped to and let go of all the resources
+/* Anisha Driving
+* Free up the frame a page is mapped to and let go of all the resources
 * Acquired information from Piazza post @1101 and post @1131 */
 void
 free_frame (struct page *page)

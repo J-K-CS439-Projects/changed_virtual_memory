@@ -3,28 +3,35 @@
 
 #include <stdint.h>
 #include <hash.h>
+#include "filesys/file.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
-#include "filesys/file.h"
 #include "vm/frame.h"
 
+
+/* Emaan and Juan split driving
+* Struct to characterize a page and its content */
 struct page
   {
     /* Elements related to the page and frame */
-    void *vir_address;          /* Virtual address. */
-    struct frame_entry *frame;  /* Occupied frame, if any */
-    int block_sector;      /* Sector in the swap table */
-    int location; //0 = frame_table, 1 = swapt_table, 2 = filesys
+    void *vir_address;               /* Page's virtual address */
+    struct frame_entry *frame;       /* Occupied frame, if any */
+    int block_sector;                /* Sector in the swap table */
+    int location;                    /* Member letting us know the */
+                                     /*  location of the page */
+                                     /*  0 = page in frame table */
+                                     /*  1 = page in swap table */
+                                     /*  2 = page in filesys */
 
     /* Elements regarding files */
-    struct file *file;          /* File to load page from */
-    off_t offset;               /* File offset */
-    size_t read_bytes;          /* Number of bytes to read from file */
-    bool writable;              /* Can you write to this page */
+    struct file *file;               /* File where page data is stored */
+    off_t offset;                    /* Offset for file reading */
+    size_t read_bytes;               /* AMount of bytes to read in file */
+    bool writable;                   /* Boolean for file reading */
 
     /* Elements relevant to whole process */
-    uint32_t *pagedir;          /* Owner thread's pagedir */
-    struct hash_elem hash_elem; /* Hash table element. */
+    uint32_t *pagedir;               /* Page's associated thread's pagedir */
+    struct hash_elem hash_elem;      /* Hash element for the page table */
   };
 
 void page_init(struct thread *, struct page *, void *, int , struct file *,
@@ -35,4 +42,4 @@ bool page_comparator (const struct hash_elem *, const struct hash_elem *,
   void *);
 void page_deallocate (struct hash_elem *, void *);
 
-#endif
+#endif /* vm/page.h */

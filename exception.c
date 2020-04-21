@@ -132,34 +132,29 @@ kill (struct intr_frame *f)
     }
 }
 
+/* Keegan Driving
+* Attempt to add a mapping of a page's virtual address to frame in memory,
+* if unsuccessful we exit */
 void
 exit_if_unmapped (struct thread *cur, struct page *cur_page, uint8_t *physical_address)
 {
-  /* First we check if the page is mapped to physical memory, if it is we leave */
-  if(pagedir_get_page (cur->pagedir, cur_page->vir_address) != NULL) {
-    return;
+  if (!pagedir_set_page (cur->pagedir, cur_page->vir_address, physical_address, cur_page->writable)) {
+    thread_exit ();
   }
-
-  /* If the page was not mapped, we try to add a mapping ourselves */
-  if (pagedir_set_page (cur->pagedir, cur_page->vir_address, physical_address, cur_page->writable)) {
-    return;
-  }
-
-  /* If we could not get a mapping we exit */
-  thread_exit ();
 }
 
+/* Juan Driving 
+* If no page was found, then add more pages until a limit is reached in relation
+* to PHYS_BASE and fault_addr*/
 void
 grow_stack_page (void *fault_addr, struct intr_frame *f, struct page *cur_page)
 {
   struct thread *cur = thread_current ();
 
   /* Check if the address is out of the stack range as disscused in sections
-  * Work inspired by Piazza post @1104 
-  * Might wanna change later to know how we got these numbers*/
-  bool outside_PHYS_BASE = (fault_addr > PHYS_BASE) || (fault_addr < PHYS_BASE - 0x800000);
-  bool outside_esp = (fault_addr > (void *)(f->esp + 32)) || (fault_addr < (void *)(f->esp - 32));
-  if (outside_PHYS_BASE || outside_esp) {
+  * Work inspired by Piazza post @1104 */
+  bool within_bounds = fault_addr >= (f->esp - 32) && fault_addr <= (f->esp + 32);
+  if(!within_bounds) {
     thread_exit ();
   }
   
@@ -167,7 +162,8 @@ grow_stack_page (void *fault_addr, struct intr_frame *f, struct page *cur_page)
   void *stack_ptr_cur = PHYS_BASE - (cur->stack_page_amount * PGSIZE);
   void *iterate = (((uintptr_t) fault_addr >> PGBITS) << PGBITS);
 
-  /* We want to keep adding pages to the page table until */
+  /* We want to keep adding pages to the page table until the iterating
+  * address reaches the limit of the stack pointer */
   while(iterate < stack_ptr_cur) {
 
     /* Create a new page, exit if unsuccessful */
@@ -186,27 +182,6 @@ grow_stack_page (void *fault_addr, struct intr_frame *f, struct page *cur_page)
     exit_if_unmapped (cur, new_page, stack_frame->physical_address);
     iterate += PGSIZE;
   }
-}
-
-void
-page_in_filesys (struct page *cur_page, uint8_t *physical_address)
-{
-  /* Load page from filesys */
-  lock_acquire(&file_lock);
-
-  off_t file_bytes_read = file_read_at (cur_page->file, physical_address,
-    cur_page->read_bytes, cur_page->offset);
-
-  if (file_bytes_read != (int) cur_page->read_bytes) {
-    lock_release (&file_lock);
-    thread_exit ();
-  }
-
-  /* Actually fill the address in physical memory with the file data */
-  void *dest = physical_address + cur_page->read_bytes;
-  size_t size = PGSIZE - cur_page->read_bytes;
-  memset (dest, 0, size);/* DONT KNOW WHAT TO DO HERE*/
-  lock_release (&file_lock);
 }
 
 /* Page fault handler.  This is a skeleton that must be filled in
@@ -228,13 +203,11 @@ page_fault (struct intr_frame *f)
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
-  struct thread *cur = thread_current ();
-  bool get_lock_and_return = false;
+  /* Relinquish a held lock for now since we are in the fault handler */
   bool thread_holding_lock;
   if (thread_holding_lock = lock_held_by_current_thread (&file_lock)) {
     lock_release (&file_lock);
   }
-
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -258,53 +231,61 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  /////////////////////////////////////////////////
-  struct page *cur_page = find_page (fault_addr);
-
-  if (cur_page == NULL) {
-    grow_stack_page (fault_addr, f, cur_page);
-    get_lock_and_return = true;
-
-  /* If the page is in swap or filesys, get a frame*/
-  } else if(cur_page->location > 0) {
-    struct frame_entry *frame = get_frame(cur_page);
-
-    if(cur_page->location == 2) {
-      page_in_filesys (cur_page, frame->physical_address);
-    } else {
-      swap_get (cur_page);
-    }
-    cur_page->location = 0;
-    exit_if_unmapped (cur, cur_page, frame->physical_address);
-    get_lock_and_return = true;
-  }
-
-  if(get_lock_and_return) { 
-    if(thread_holding_lock) {
-      lock_acquire(&file_lock);
-    }
-    return;
-  }
-  /////////////////////////////////////////////
-
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if (!not_present && write)
+  if (!not_present && write) {
     thread_exit ();
+  }
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
+  /* Emaan Driving
+  * Get the page with the fault_addr */
+  struct page *cur_page = find_page (fault_addr);
 
-  printf("There is no crying in Pintos!\n");
+  /* If page was not found in the page table, we should grow the stack page */
+  if (cur_page == NULL) {
+    grow_stack_page (fault_addr, f, cur_page);
 
-  kill (f);
+  /* If the page is in swap or filesys, get a frame*/
+  } else if(cur_page->location > 0) {
+    struct frame_entry *frame = get_frame(cur_page);
+
+    /* If the page is in filesys, then read bytes from cur_page's file 
+    * into frame's physical address */
+    if(cur_page->location == 2) {
+      lock_acquire(&file_lock);
+      file_read_at (cur_page->file, frame->physical_address,
+        cur_page->read_bytes, cur_page->offset);
+      lock_release (&file_lock);
+
+    /* Keegan Driving
+    * Otherwise, page is in swap so we have to read from swap into the
+    * frame's physical address */
+    } else {
+      get_swap_space (cur_page);
+    }
+    cur_page->location = 0;
+    exit_if_unmapped (thread_current (), cur_page, frame->physical_address);
+  }
+
+  /* If we had the lock before, we should acquire it again before returning
+  * to the interrupted process */
+  if(thread_holding_lock) {
+      lock_acquire(&file_lock);
+  }
+
+  // /* To implement virtual memory, delete the rest of the function
+  //    body, and replace it with code that brings in the page to
+  //    which fault_addr refers. */
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
+  //         fault_addr,
+  //         not_present ? "not present" : "rights violation",
+  //         write ? "writing" : "reading",
+  //         user ? "user" : "kernel");
+
+  // printf("There is no crying in Pintos!\n");
+
+  // kill (f);
 }
